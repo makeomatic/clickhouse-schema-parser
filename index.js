@@ -1,35 +1,31 @@
-const JSONSchemaMapper = {
-  Int8: 'integer',
-  Int16: 'integer',
-  Int32: 'integer',
-  Int64: 'string',
-  UInt8: 'integer',
-  UInt16: 'integer',
-  UInt32: 'integer',
-  UInt64: 'string',
-  Float32: 'number',
-  Float64: 'number',
-  String: 'string',
-  FixedString: 'string',
-  Date: 'string',
-  DateTime: 'string',
-};
+const formatJSONSchema = require('./format/json-schema');
 
 function parse(schema) {
   const parts = [];
 
   let leftBrkCatched = 0;
+  let commentCatched = false;
   let dashCommentCatched = false;
   let part = '';
 
   for (let i = 0; i < schema.length; i += 1) {
     const char = schema[i];
+    const nextChar = schema[i + 1];
+    const prevChar = schema[i - 1];
 
+    // catch lefts brackets count, usefull for FixedString(32)
     if (char === '(') {
       leftBrkCatched += 1;
+
+      // skip first left bracket
+      if (leftBrkCatched === 1) {
+        continue;
+      }
     }
 
+    // schema end
     if (leftBrkCatched === 1 && char === ')') {
+      // push parts if exists
       if (part !== '') {
         parts.push(part);
       }
@@ -37,66 +33,69 @@ function parse(schema) {
       break;
     }
 
+    // catch right brackets count, usefull for FixedString(32)
     if (char === ')') {
       leftBrkCatched -= 1;
     }
 
-    if (char === '-' && schema[i + 1] === '-') {
+    // proccess comment
+    if (char === '-' && nextChar === '-') {
       dashCommentCatched = true;
     }
 
+    // proccess comment
+    if (char === '/' && nextChar === '*') {
+      commentCatched = true;
+    }
+
+    // it's not schema yet
     if (leftBrkCatched === 0) {
       continue;
     }
 
-    if (leftBrkCatched === 1 && char === '(') {
-      continue;
-    }
-
+    // skip comment
     if (dashCommentCatched === true && char !== '\n') {
       continue;
     }
 
+    // skip comment
+    if (commentCatched === true && (char !== '*' || (char === '*' && prevChar === '/'))) {
+      continue;
+    }
+
+    // end of comment skiping
     if (dashCommentCatched === true && char === '\n') {
       dashCommentCatched = false;
       continue;
     }
 
+    // end of comment skiping
+    if (commentCatched === true && char === '*' && nextChar === '/') {
+      commentCatched = false;
+      continue;
+    }
+
+    // end of comment skiping
+    if (char === '/' && prevChar === '*') {
+      continue;
+    }
+
+    // skip whitespaces before key or value
     if (part === '' && (char === '\n' || char === ' ')) {
       continue;
     }
 
+    // collect key or value
     if (char !== ',' && char !== ' ') {
       part += char;
     } else {
+      // push key or value
       parts.push(part);
       part = '';
     }
   }
 
   return parts;
-}
-
-function formatJSONSchema(parts) {
-  const schema = Object.create(null);
-  const properties = Object.create(null);
-  const required = new Set();
-
-  for (let i = 0; i < parts.length; i += 2) {
-    const property = Object.create(null);
-    const key = parts[i];
-    const type = parts[i + 1];
-
-    property.type = JSONSchemaMapper[type.indexOf('FixedString') === 0 ? 'FixedString' : type];
-    properties[key] = property;
-    required.add(key);
-  }
-
-  schema.type = 'object';
-  schema.properties = properties;
-  schema.required = Array.from(required);
-
-  return schema;
 }
 
 module.exports = {

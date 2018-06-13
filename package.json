@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "test": "mocha",
+    "test": "yarn lint && mocha",
     "lint": "eslint ."
   },
   "devDependencies": {
